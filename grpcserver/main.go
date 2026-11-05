@@ -18,16 +18,16 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type greeterServer struct {
+type greeterImpl struct {
 	greeterpb.UnimplementedGreeterServer
 }
 
-func (s *greeterServer) SayHello(ctx context.Context, req *greeterpb.HelloRequest) (*greeterpb.HelloReply, error) {
-	name := req.GetName()
-	if name == "" {
-		name = "world"
-	}
-	return &greeterpb.HelloReply{Message: "Hello, " + name + "!"}, nil
+func (s *greeterImpl) SayHello(ctx context.Context, req *greeterpb.HelloRequest) (*greeterpb.HelloReply, error) {
+	return buildReply("Hello " + req.GetName()), nil
+}
+
+func buildReply(message string) *greeterpb.HelloReply {
+	return &greeterpb.HelloReply{Message: message}
 }
 
 func main() {
@@ -39,7 +39,7 @@ func main() {
 		log.Fatalf("gRPC 监听失败 (%s): %v", grpcAddr, err)
 	}
 	grpcSrv := grpc.NewServer()
-	greeterpb.RegisterGreeterServer(grpcSrv, &greeterServer{})
+	greeterpb.RegisterGreeterServer(grpcSrv, &greeterImpl{})
 
 	go func() {
 		log.Printf("gRPC 服务已启动: %s", grpcAddr)
