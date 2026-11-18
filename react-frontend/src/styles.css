@@ -10,7 +10,7 @@
 body { margin: 0; }
 
 .page {
-  max-width: 900px;
+  max-width: 1180px;
   margin: 0 auto;
   padding: 40px 20px;
 }
@@ -73,6 +73,8 @@ body { margin: 0; }
   gap: 16px;
 }
 
+.row.three { grid-template-columns: 1fr 1fr; margin-top: 16px; }
+
 label {
   display: flex;
   flex-direction: column;
@@ -81,18 +83,22 @@ label {
   font-weight: 500;
 }
 
-input {
+label.reason { margin-top: 16px; }
+
+input, textarea {
   padding: 10px 12px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
   font-size: 14px;
+  font-family: inherit;
   outline: none;
   transition: border-color .15s, box-shadow .15s;
 }
-input:focus {
+input:focus, textarea:focus {
   border-color: #6366f1;
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
 }
+textarea { resize: vertical; }
 
 .actions {
   display: flex;
@@ -121,19 +127,86 @@ button.secondary:hover:not(:disabled) { background: #4b5563; }
 button.ghost { background: transparent; color: #4f46e5; border: 1px solid #c7d2fe; }
 button.ghost:hover:not(:disabled) { background: #eef2ff; }
 
-button.small { padding: 5px 12px; font-size: 13px; }
+button.small { padding: 5px 11px; font-size: 13px; }
+button.approve { background: #16a34a; }
+button.approve:hover:not(:disabled) { background: #15803d; }
+button.reject { background: #f59e0b; }
+button.reject:hover:not(:disabled) { background: #d97706; }
+button.resubmit { background: #2563eb; }
+button.resubmit:hover:not(:disabled) { background: #1d4ed8; }
 button.danger { background: #dc2626; }
 button.danger:hover:not(:disabled) { background: #b91c1c; }
 
-table { width: 100%; border-collapse: collapse; }
+.list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.list-head h2 { margin-bottom: 14px; }
+
+.filters { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+button.filter {
+  padding: 6px 14px;
+  font-size: 13px;
+  background: #f3f4f6;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
+}
+button.filter:hover:not(:disabled) { background: #e5e7eb; }
+button.filter.active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+
+.badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #4b5563;
+  white-space: nowrap;
+}
+.badge.pending { background: #fef3c7; color: #92400e; }
+.badge.approved { background: #dcfce7; color: #166534; }
+.badge.rejected { background: #fee2e2; color: #991b1b; }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 900px; }
 th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
 th { color: #6b7280; font-weight: 600; }
 tbody tr:hover { background: #f9fafb; }
 
-.ops { display: flex; gap: 8px; }
+.title-cell { font-weight: 600; min-width: 160px; }
+.reject-reason { margin-top: 4px; color: #b91c1c; font-size: 12px; font-weight: 400; }
+.time-cell { color: #6b7280; font-size: 12px; white-space: nowrap; }
+.ops { display: flex; gap: 6px; flex-wrap: wrap; min-width: 170px; }
 .muted { color: #9ca3af; }
 
+.flow { display: flex; gap: 14px; align-items: flex-start; }
+.flow-step { display: flex; gap: 6px; align-items: flex-start; }
+.flow-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  background: #e5e7eb;
+  color: #6b7280;
+  flex: none;
+}
+.flow-step.approved .flow-dot { background: #dcfce7; color: #166534; }
+.flow-step.rejected .flow-dot { background: #fee2e2; color: #991b1b; }
+.flow-info { display: flex; flex-direction: column; line-height: 1.35; }
+.flow-info strong { font-size: 12px; white-space: nowrap; }
+.flow-info small { font-size: 11px; color: #9ca3af; }
+.flow-remark { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 @media (max-width: 600px) {
-  .row { grid-template-columns: 1fr; }
+  .row, .row.three { grid-template-columns: 1fr; }
   .header { flex-direction: column; align-items: flex-start; }
+  .flow { flex-direction: column; gap: 8px; }
 }

@@ -18,13 +18,22 @@ async function request(path, options = {}) {
 
 export const api = {
   health: () => request('/healthz'),
-  list: () => request('/users'),
-  get: (id) => request(`/users/${id}`),
+  list: (status) => request(`/approvals${status ? `?status=${status}` : ''}`),
+  get: (id) => request(`/approvals/${id}`),
   create: (payload) =>
-    request('/users', { method: 'POST', body: JSON.stringify(payload) }),
-  replace: (id, payload) =>
-    request(`/users/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+    request('/approvals', { method: 'POST', body: JSON.stringify(payload) }),
   patch: (id, payload) =>
-    request(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  remove: (id) => request(`/users/${id}`, { method: 'DELETE' }),
+    request(`/approvals/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  approve: (id, remark) =>
+    request(`/approvals/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ remark }),
+    }),
+  reject: (id, remark) =>
+    request(`/approvals/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ remark }),
+    }),
+  resubmit: (id) => request(`/approvals/${id}/resubmit`, { method: 'POST' }),
+  remove: (id) => request(`/approvals/${id}`, { method: 'DELETE' }),
 }

@@ -1,12 +1,52 @@
-# RESTful HTTP 接口说明
+# 审批 API 说明
 
 ## 概述
 
-`restful.go` 是一个纯标准库实现的 RESTful HTTP 服务，对外提供用户资源的增删改查接口。
+`restful.go` 是一个纯标准库实现的两级审批系统 HTTP 服务。
 
 - 仅使用 Go 标准库，无需 `go.mod` 和第三方依赖
-- 资源数据保存在内存 `map` 中，通过 `sync.RWMutex` 保证并发安全
-- 统一返回 JSON，遵循标准 HTTP 状态码
+- 数据保存在内存 `map` 中，通过 `sync.RWMutex` 保证并发安全（重启后数据重置）
+- 固定两级审批节点：**需求owner → 需求owner上级**
+- 审批人固定在审批单上（新建时填写），审批时无需再指定
+- 任一级驳回后退回申请人，可修改后重新提交，从第一节点重新开始
+
+## 审批单字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | int | 审批单 ID |
+| `title` | string | 申请标题 |
+| `applicant` | string | 申请人 |
+| `reason` | string | 申请事由 |
+| `owner` | string | 需求owner（第一节点审批人） |
+| `owner_manager` | string | 需求owner上级（第二节点审批人） |
+| `status` | string | 整体状态：`pending` / `approved` / `returned` |
+| `current_step` | int | 当前待审批节点：0=需求owner，1=需求owner上级，2=已完成 |
+| `steps` | array | 两个节点的审批记录（见下） |
+| `last_reject_reason` | string | 最近一次驳回意见，供申请人查看 |
+| `created_at` / `updated_at` | string | 创建/更新时间（RFC3339） |
+
+`steps` 中每个节点：
+
+| 字段 | 说明 |
+|---|---|
+| `name` | 节点名称：`需求owner` / `需求owner上级` |
+| `approver` | 该节点审批人（来自 owner / owner_manager） |
+| `status` | `pending` / `approved` / `rejected` |
+| `remark` | 该节点的审批意见 |
+| `updated_at` | 该节点处理时间 |
+
+## 状态流转
+
+```
+新建 → pending(current_step=0)
+  ├─ owner 通过 → pending(current_step=1)
+  │    ├─ 上级通过 → approved(current_step=2)  完成
+  │    └─ 上级驳回 → returned（退回申请人）
+  └─ owner 驳回 → returned（退回申请人）
+
+returned → 申请人修改(PATCH) → 重新提交(POST /resubmit) → pending(current_step=0) 重新开始
+```
 
 ## 启动服务
 
@@ -16,81 +56,68 @@ go run restful.go          # 默认监听 :8080
 ADDR=:9000 go run restful.go  # 自定义端口
 ```
 
-启动后终端输出：
-
-```
-REST API 正在监听端口 8080
-```
-
 ## 接口列表
 
 | 方法 | 路径 | 说明 | 成功状态码 |
 |---|---|---|---|
 | GET | `/healthz` | 健康检查 | 200 |
-| GET | `/users` | 资源列表，支持 `?limit=2&offset=1` 分页 | 200 |
-| POST | `/users` | 创建资源 | 201 |
-| GET | `/users/{id}` | 查询单个资源 | 200 |
-| PUT | `/users/{id}` | 全量更新 | 200 |
-| PATCH | `/users/{id}` | 部分更新 | 200 |
-| DELETE | `/users/{id}` | 删除资源 | 204 |
+| GET | `/approvals` | 列表，支持 `?status=pending&limit=20&offset=0` | 200 |
+| POST | `/approvals` | 新建申请 | 201 |
+| GET | `/approvals/{id}` | 详情 | 200 |
+| PATCH | `/approvals/{id}` | 修改申请（仅 `returned` 可改） | 200 |
+| POST | `/approvals/{id}/resubmit` | 重新提交（仅 `returned` 可用） | 200 |
+| POST | `/approvals/{id}/approve` | 通过当前节点 | 200 |
+| POST | `/approvals/{id}/reject` | 驳回当前节点（退回申请人） | 200 |
+| DELETE | `/approvals/{id}` | 删除 | 204 |
 
 ## 请求与响应示例
 
 ```bash
-# 健康检查
-curl http://localhost:8080/healthz
-# {"status":"ok"}
-
-# 列表（分页）
-curl 'http://localhost:8080/users?limit=2&offset=0'
-
-# 创建
-curl -X POST http://localhost:8080/users \
+# 新建申请（必须填写 owner 与 owner_manager）
+curl -X POST http://localhost:8080/approvals \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Tom","email":"tom@example.com"}'
-# {"id":3,"name":"Tom","email":"tom@example.com"}
+  -d '{"title":"采购显示器","applicant":"赵六","reason":"开发需要","owner":"李四","owner_manager":"王五"}'
 
-# 查询单个
-curl http://localhost:8080/users/3
+# 列表（只看审批中的）
+curl 'http://localhost:8080/approvals?status=pending'
 
-# 部分更新
-curl -X PATCH http://localhost:8080/users/3 \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"Tom2"}'
+# 第一节点：需求owner通过（审批人自动取 owner，意见可留空）
+curl -X POST http://localhost:8080/approvals/4/approve \
+  -H 'Content-Type: application/json' -d '{"remark":"同意采购"}'
+# current_step 变为 1，等待需求owner上级
 
-# 全量更新
-curl -X PUT http://localhost:8080/users/3 \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"Tom3","email":"t3@example.com"}'
+# 第二节点：上级驳回
+curl -X POST http://localhost:8080/approvals/4/reject \
+  -H 'Content-Type: application/json' -d '{"remark":"预算不足"}'
+# status=returned，last_reject_reason="预算不足"，节点重置
+
+# 申请人修改后重新提交
+curl -X PATCH http://localhost:8080/approvals/4 \
+  -H 'Content-Type: application/json' -d '{"title":"采购显示器-精简版"}'
+curl -X POST http://localhost:8080/approvals/4/resubmit
+# status=pending，current_step=0，从第一节点重新开始
 
 # 删除
-curl -X DELETE http://localhost:8080/users/3
-# 204 No Content
+curl -X DELETE http://localhost:8080/approvals/4
 ```
 
-## 设计要点
+## 状态码与错误
 
-- **统一 JSON 响应**：成功返回资源或列表，错误返回 `{"error":"..."}`。
-- **正确的状态码**：创建 `201`、删除 `204`、参数或 JSON 错误 `400`、资源不存在 `404`、方法不匹配由 ServeMux 自动返回 `405`。
-- **请求体限制**：`MaxBytesReader` 限制为 1MB，防止超大请求体。
-- **并发安全**：内存存储用 `sync.RWMutex` 保护。
-- **超时保护**：`http.Server` 设置了 `ReadHeaderTimeout: 5s`。
+- `200` 查询/更新/审批/重提成功；`201` 创建成功；`204` 删除成功
+- `400` 参数错误或 JSON 非法（必填字段为空、`status` 过滤值非法）
+- `404` 审批单不存在
+- `409` 业务冲突：非 pending 状态执行审批、审批中执行修改、已通过执行修改、非 returned 执行重提、重复审批
 
-## 分页说明
+错误统一格式：`{"error": "当前状态不能执行该操作"}`
 
-`limit` 表示每页返回条数（默认 20），`offset` 表示跳过的记录数（默认 0）。数据先按 ID 排序再切片：
+## 业务规则
 
-```
-offset = (页码 - 1) × limit
-```
-
-例如 `?limit=2&offset=2` 返回第 3、4 条记录。当 `offset` 超出总数时返回空数组 `[]`。
+1. 新建时状态固定为 `pending`，审批人固定为填写的 `owner` / `owner_manager`。
+2. 只有 `pending` 状态且对应节点才能审批；owner 通过后流转到上级，上级通过后整体 `approved`。
+3. 任一级驳回即退回申请人（状态 `returned`），两个节点重置，并记录 `last_reject_reason`。
+4. 只有 `returned` 状态可以修改和重新提交；重新提交清空驳回意见，从第一节点重新开始。
+5. 列表按 ID 倒序返回，支持按 `status` 精确过滤。
 
 ## 验证记录
 
-`go vet` 静态检查通过。实测启动输出监听提示，健康检查、创建、查询、部分更新、全量更新、删除、404 全部符合预期，测试用的临时进程与文件已清理。
-
-## 备注
-
-- IDE 可能对 `restful.go` 报 `main redeclared in this block`，这是因为项目根目录还有 `server.go`、`hello.go` 等其他包含 `main` 函数的文件，被当作同一个包分析。用 `go run restful.go` 单文件运行不受影响。
-- 当前存储是内存实现，服务重启后数据丢失。如需持久化，可引入 SQLite、PostgreSQL 等存储，建议把存储逻辑抽象为独立接口，使 HTTP 层与存储层解耦。
+`go vet` 通过。实测完整流程：新建 → owner 通过（step 0→1）→ 审批中修改 409 → 上级驳回（returned）→ 申请人修改 → 重新提交（回到 step 0）→ owner 通过 → 上级通过（approved）→ 重复审批 409，全部符合预期。
